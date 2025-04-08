@@ -1,0 +1,12 @@
+../Core/Src/main.c:99:5:main	21
+../Core/Src/main.c:196:6:SystemClock_Config	3
+../Core/Src/main.c:234:6:linear_buf_reset	1
+../Core/Src/main.c:239:5:linear_buf_insert_char	2
+../Core/Src/main.c:248:6:stop_chenillard	1
+../Core/Src/main.c:255:6:chenillard1_next_step	5
+../Core/Src/main.c:281:6:chenillard2_next_step	1
+../Core/Src/main.c:288:6:chenillard3_next_step	1
+../Core/Src/main.c:294:6:process_command	19
+../Core/Src/main.c:368:6:HAL_TIM_PeriodElapsedCallback	1
+../Core/Src/main.c:375:6:MPU_Config	1
+../Core/Src/main.c:405:6:Error_Handler	1
