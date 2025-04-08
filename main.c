@@ -76,6 +76,9 @@ int main() {
 					printf("Commande Chenillard reconnue : CHENILLARD %d %s (envoi au microcontrôleur)\n", chenillard_number, state);
 					commande_reconnaissance = true;
                 		}
+				else {
+					printf("Erreur : Format de commande Chenillard incorrect (CHENILLARD<1-3> ON/OFF).\n");
+				}
 			}
 		}
 
@@ -94,9 +97,6 @@ int main() {
 				printf("Erreur : Format de commande Fréquence Chenillard incorrect (CHENILLARD FREQUENCE<1-3>).\n");
 			}
 		}
-		else {
-			printf("Erreur : Format de commande Chenillard incorrect (CHENILLARD<1-3> ON/OFF ou CHENILLARD FREQUENCE<1-3>).\n");
-            	}
 
 
 //-------------------------------------------------------------------------------------------------------COMMANDE GENERALE
