@@ -23,6 +23,10 @@
 #define CMD_HELP "help"
 #define CMD_CLEAR "clear"
 
+
+//-------------------------------------------------------------------------------------- FONCTIONS
+
+
 //Afficher la liste de commande
 void liste_cmd() {
 	printf("\n--- Liste des commandes disponibles ---\n");
@@ -35,12 +39,15 @@ void liste_cmd() {
 	printf("------------------------------\n");
 }
 
+//------------------------------------------------------------------------------------------ MAIN
+
 int main() {
 	char commande[100];
 
 	printf("Bienvenue dans le centre de contrôle du STM32 !\n");
 	liste_cmd();
 
+//--------------------------------------------------------------------------------------------- WHILE
 
 	while (1) {
 		printf(">");
@@ -49,9 +56,66 @@ int main() {
 		}
 
 		//Supprimer le caractère de nouvelle ligne à la fin d la commande
-		commande[strcspn(commande, "\n")] = 0;
+                commande[strcspn(commande, "\n")] = 0;
 
-		bool commande_reconnaissance = false;
+                bool commande_reconnaissance = false;
+
+
+//----------------------------------------------------------------------------------------------- COMMANDE LED
+
+
+		if (strncmp(commande, "LED", 3) == 0) {
+            // ... (Analyse des commandes LED) ...
+            		int led_number;
+            		char state[4];
+            		if (sscanf(commande, "LED%d %3s", &led_number, state) == 2) {
+                		if (led_number >= 1 && led_number <= 3 &&
+                    			(strcmp(state, "ON") == 0 || strcmp(state, "OFF") == 0)) {
+                    			printf("Commande LED reconnue : LED %d %s (envoi au microcontrôleur)\n", led_number, state);
+                    			commande_reconnaissance = true;
+				}
+				else {
+                			printf("Erreur : Format de commande LED incorrect (LED<1-3> ON/OFF).\n");
+				}
+			}
+		}
+
+//-------------------------------------------------------------------------------------------------- COMMANDE CHENILLARD
+
+		if (strncmp(commande, "CHENILLARD", 10) == 0) {
+			int chenillard_number;
+			char state[4];
+			if (sscanf(commande, "CHENILLARD%d %3s", &chenillard_number, state) == 2) {
+				if (chenillard_number >= 1 && chenillard_number <= 3 &&
+					(strcmp(state, "ON") == 0 || strcmp(state, "OFF") == 0)) {
+					printf("Commande Chenillard reconnue : CHENILLARD %d %s (envoi au microcontrôleur)\n", chenillard_number, state);
+					commande_reconnaissance = true;
+                		}
+			}
+		}
+
+		if (strncmp(commande, "CHENILLARD FREQUENCE", 20) == 0) {
+			int frequency_number;
+			if (sscanf(commande, "CHENILLARD FREQUENCE%d", &frequency_number) == 1) {
+				if (frequency_number >= 1 && frequency_number <= 3) {
+					printf("Commande Fréquence Chenillard reconnue : CHENILLARD FREQUENCE %d (envoi au microcontrôleur)\n", frequency_number);
+					commande_reconnaissance = true;
+				}
+				else {
+					printf("Erreur : Numéro de fréquence Chenillard incorrect (1, 2 ou 3).\n");
+				}
+			}
+			else {
+				printf("Erreur : Format de commande Fréquence Chenillard incorrect (CHENILLARD FREQUENCE<1-3>).\n");
+			}
+		}
+		else {
+			printf("Erreur : Format de commande Chenillard incorrect (CHENILLARD<1-3> ON/OFF ou CHENILLARD FREQUENCE<1-3>).\n");
+            	}
+
+
+//-------------------------------------------------------------------------------------------------------COMMANDE GENERALE
+
 
 		if (strcmp(commande, "q") == 0 || strcmp(commande, "Q") == 0 || strcmp(commande, CMD_QUIT) == 0) {
 			printf("Fermeture de l'application.\n");
@@ -63,14 +127,6 @@ int main() {
 		}
 		if (strcmp(commande, "c") == 0 || strcmp(commande, "C") == 0 || strcmp(commande, CMD_CLEAR) == 0) {
 			printf("\033[2J\033[H");
-			commande_reconnaissance = true;
-                }
-		if (strcmp(commande, LED_ON_1) == 0 || strcmp(commande, LED_OFF_1) == 0 || strcmp(commande, LED_ON_2) == 0 || strcmp(commande, LED_OFF_2) == 0 || strcmp(commande, LED_ON_3) == 0 || strcmp(commande, LED_OFF_3) == 0) {
-			printf("Commande LED détectée : %s (envoie au microcontrôleur)\n", commande);
-			commande_reconnaissance = true;
-		}
-		if (strcmp(commande, CHENILLARD_ON_1) == 0 || strcmp(commande, CHENILLARD_OFF_1) == 0 || strcmp(commande, CHENILLARD_ON_2) == 0 || strcmp(commande, CHENILLARD_OFF_2) == 0 || strcmp(commande, CHENILLARD_ON_3) == 0 || strcmp(commande, CHENILLARD_OFF_3) == 0 || strcmp(commande, CHENILLARD_FREQ_1) == 0 || strcmp(commande, CHENILLARD_FREQ_2) == 0 || strcmp(commande, CHENILLARD_FREQ_3) == 0) {
-			printf("Commande Chenillard détectée : %s (envoie au microcontrôleur)\n", commande);
 			commande_reconnaissance = true;
                 }
 		if (!commande_reconnaissance) {
