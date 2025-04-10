@@ -1,0 +1,3 @@
+/home/ubuntu/reverse_final_project/build/CMakeFiles/STMcontroler.dir
+/home/ubuntu/reverse_final_project/build/CMakeFiles/edit_cache.dir
+/home/ubuntu/reverse_final_project/build/CMakeFiles/rebuild_cache.dir
