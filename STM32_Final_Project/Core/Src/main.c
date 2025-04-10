@@ -16,11 +16,12 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
+
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "tim.h"
 #include "usart.h"
 #include "gpio.h"
+#include "tim.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -30,10 +31,14 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-uint8_t msg[] = "ENTREZ une commande (LED<n> ON/OFF, CHENILLARD<n> ON/OFF/INT ON/OFF) : \r\n";
+uint8_t msg[] = "ENTREZ une commande (LED<n> ON/OFF, CHENILLARD<n> ON/OFF) : \r\n";
 uint8_t msg2[] = "Erreur ! Commande inconnue.\r\n";
-uint8_t msg_chenillard_int_on[] = "Chenillard en mode interruption. Envoyer 'n' pour le prochain pas.\r\n";
-uint8_t msg_chenillard_int_off[] = "Chenillard mode interruption OFF.\r\n";
+uint8_t msg_chenillard_on[] = "Chenillard demarre.\r\n";
+uint8_t msg_chenillard_off[] = "Chenillard arrete.\r\n";
+uint8_t msg_led_on[] = "LED allumee.\r\n";
+uint8_t msg_led_off[] = "LED eteinte.\r\n";
+uint8_t msg_chenillard_running_err[] = "Erreur ! Arretez le chenillard en cours avant de controler les LEDs.\r\n";
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -46,16 +51,10 @@ const char* LED_ON_3 = "LED3 ON";
 const char* LED_OFF_3 = "LED3 OFF";
 const char* CHENILLARD_ON_1 = "CHENILLARD1 ON";
 const char* CHENILLARD_OFF_1 = "CHENILLARD1 OFF";
-const char* CHENILLARD_INT_ON_1 = "CHENILLARD1 INT ON";
-const char* CHENILLARD_INT_OFF_1 = "CHENILLARD1 INT OFF";
 const char* CHENILLARD_ON_2 = "CHENILLARD2 ON";
 const char* CHENILLARD_OFF_2 = "CHENILLARD2 OFF";
-const char* CHENILLARD_INT_ON_2 = "CHENILLARD2 INT ON";
-const char* CHENILLARD_INT_OFF_2 = "CHENILLARD2 INT OFF";
 const char* CHENILLARD_ON_3 = "CHENILLARD3 ON";
 const char* CHENILLARD_OFF_3 = "CHENILLARD3 OFF";
-const char* CHENILLARD_INT_ON_3 = "CHENILLARD3 INT ON";
-const char* CHENILLARD_INT_OFF_3 = "CHENILLARD3 INT OFF";
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -72,7 +71,6 @@ struct linear_buf_t {
 struct linear_buf_t linear_buf;
 volatile uint8_t chenillard_running = 0;
 volatile uint8_t current_chenillard = 0;
-volatile uint8_t chenillard_int_mode = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -120,12 +118,15 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART3_UART_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
+  MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
   linear_buf_reset(&linear_buf);
+  HAL_TIM_Base_Start_IT(&htim1);
+  HAL_TIM_Base_Start_IT(&htim2);
+  HAL_TIM_Base_Start_IT(&htim3);
   HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY);
   /* USER CODE END 2 */
 
@@ -136,17 +137,7 @@ int main(void)
   {
     if (HAL_UART_GetState(&huart3) == HAL_UART_STATE_READY) {
       if (HAL_UART_Receive(&huart3, &rx_char, 1, 0) == HAL_OK) {
-        if (chenillard_running && chenillard_int_mode && (rx_char == 'n' || rx_char == 'N')) {
-          // Exécuter un pas du chenillard en mode interruption manuelle
-          if (current_chenillard == 1) {
-            chenillard1_next_step();
-          } else if (current_chenillard == 2) {
-            chenillard2_next_step();
-          } else if (current_chenillard == 3) {
-            chenillard3_next_step();
-          }
-          continue; // Retour au début de la boucle pour attendre le prochain caractère
-        } else if (rx_char == '\r' || rx_char == '\n') {
+        if (rx_char == '\r' || rx_char == '\n') {
           process_command((char*)linear_buf.buffer);
           linear_buf_reset(&linear_buf);
           HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY); // Réafficher l'invite
@@ -160,23 +151,23 @@ int main(void)
       }
     }
 
-    // Exécution automatique des chenillards (si pas en mode interruption)
-    if (chenillard_running && !chenillard_int_mode) {
+    // Exécution automatique des chenillards (sans interruption timer)
+    if (chenillard_running) {
       if (current_chenillard == 1) {
         static uint32_t last_tick1 = 0;
-        if (HAL_GetTick() - last_tick1 >= 200) {
+        if (HAL_GetTick() - last_tick1 >= 200) { // Délai pour le chenillard 1
           chenillard1_next_step();
           last_tick1 = HAL_GetTick();
         }
       } else if (current_chenillard == 2) {
         static uint32_t last_tick2 = 0;
-        if (HAL_GetTick() - last_tick2 >= 300) {
+        if (HAL_GetTick() - last_tick2 >= 300) { // Délai pour le chenillard 2
           chenillard2_next_step();
           last_tick2 = HAL_GetTick();
         }
       } else if (current_chenillard == 3) {
         static uint32_t last_tick3 = 0;
-        if (HAL_GetTick() - last_tick3 >= 500) {
+        if (HAL_GetTick() - last_tick3 >= 500) { // Délai pour le chenillard 3
           chenillard3_next_step();
           last_tick3 = HAL_GetTick();
         }
@@ -248,8 +239,8 @@ int linear_buf_insert_char(struct linear_buf_t *lb, uint8_t c) {
 void stop_chenillard(void) {
   chenillard_running = 0;
   current_chenillard = 0;
-  chenillard_int_mode = 0;
   HAL_GPIO_WritePin(GPIOB, led1_Pin | led2_Pin | led3_Pin, GPIO_PIN_RESET);
+  HAL_UART_Transmit(&huart3, msg_chenillard_off, strlen((char*)msg_chenillard_off), HAL_MAX_DELAY);
 }
 
 void chenillard1_next_step(void) {
@@ -292,82 +283,57 @@ void chenillard3_next_step(void) {
 }
 
 void process_command(char *command) {
+  if (chenillard_running) {
+    if (strncmp(command, "LED", 3) == 0) {
+      HAL_UART_Transmit(&huart3, msg_chenillard_running_err, strlen((char*)msg_chenillard_running_err), HAL_MAX_DELAY);
+      return;
+    }
+  }
+
   if (strcmp(command, LED_ON_1) == 0) {
-    stop_chenillard();
     HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_SET);
+    HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
   } else if (strcmp(command, LED_OFF_1) == 0) {
-    stop_chenillard();
     HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_RESET);
+    HAL_UART_Transmit(&huart3, msg_led_off, strlen((char*)msg_led_off), HAL_MAX_DELAY);
   } else if (strcmp(command, LED_ON_2) == 0) {
-    stop_chenillard();
     HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_SET);
+    HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
   } else if (strcmp(command, LED_OFF_2) == 0) {
-    stop_chenillard();
     HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_RESET);
+    HAL_UART_Transmit(&huart3, msg_led_off, strlen((char*)msg_led_off), HAL_MAX_DELAY);
   } else if (strcmp(command, LED_ON_3) == 0) {
-    stop_chenillard();
     HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_SET);
+    HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
   } else if (strcmp(command, LED_OFF_3) == 0) {
-    stop_chenillard();
     HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_RESET);
+    HAL_UART_Transmit(&huart3, msg_led_off, strlen((char*)msg_led_off), HAL_MAX_DELAY);
   } else if (strcmp(command, CHENILLARD_ON_1) == 0) {
-    stop_chenillard();
+    stop_chenillard(); // S'assurer qu'aucun chenillard n'est en cours
     chenillard_running = 1;
     current_chenillard = 1;
-    chenillard_int_mode = 0;
+    HAL_UART_Transmit(&huart3, msg_chenillard_on, strlen((char*)msg_chenillard_on), HAL_MAX_DELAY);
   } else if (strcmp(command, CHENILLARD_OFF_1) == 0) {
     stop_chenillard();
-  } else if (strcmp(command, CHENILLARD_INT_ON_1) == 0) {
-    stop_chenillard();
-    chenillard_running = 1;
-    current_chenillard = 1;
-    chenillard_int_mode = 1;
-    HAL_UART_Transmit(&huart3, msg_chenillard_int_on, strlen((char*)msg_chenillard_int_on), HAL_MAX_DELAY);
-  } else if (strcmp(command, CHENILLARD_INT_OFF_1) == 0) {
-    stop_chenillard();
-    HAL_UART_Transmit(&huart3, msg_chenillard_int_off, strlen((char*)msg_chenillard_int_off), HAL_MAX_DELAY);
   } else if (strcmp(command, CHENILLARD_ON_2) == 0) {
-    stop_chenillard();
+    stop_chenillard(); // S'assurer qu'aucun chenillard n'est en cours
     chenillard_running = 1;
     current_chenillard = 2;
-    chenillard_int_mode = 0;
+    HAL_UART_Transmit(&huart3, msg_chenillard_on, strlen((char*)msg_chenillard_on), HAL_MAX_DELAY);
   } else if (strcmp(command, CHENILLARD_OFF_2) == 0) {
     stop_chenillard();
-  } else if (strcmp(command, CHENILLARD_INT_ON_2) == 0) {
-    stop_chenillard();
-    chenillard_running = 1;
-    current_chenillard = 2;
-    chenillard_int_mode = 1;
-    HAL_UART_Transmit(&huart3, msg_chenillard_int_on, strlen((char*)msg_chenillard_int_on), HAL_MAX_DELAY);
-  } else if (strcmp(command, CHENILLARD_INT_OFF_2) == 0) {
-    stop_chenillard();
-    HAL_UART_Transmit(&huart3, msg_chenillard_int_off, strlen((char*)msg_chenillard_int_off), HAL_MAX_DELAY);
   } else if (strcmp(command, CHENILLARD_ON_3) == 0) {
-    stop_chenillard();
+    stop_chenillard(); // S'assurer qu'aucun chenillard n'est en cours
     chenillard_running = 1;
     current_chenillard = 3;
-    chenillard_int_mode = 0;
+    HAL_UART_Transmit(&huart3, msg_chenillard_on, strlen((char*)msg_chenillard_on), HAL_MAX_DELAY);
   } else if (strcmp(command, CHENILLARD_OFF_3) == 0) {
     stop_chenillard();
-  } else if (strcmp(command, CHENILLARD_INT_ON_3) == 0) {
-    stop_chenillard();
-    chenillard_running = 1;
-    current_chenillard = 3;
-    chenillard_int_mode = 1;
-    HAL_UART_Transmit(&huart3, msg_chenillard_int_on, strlen((char*)msg_chenillard_int_on), HAL_MAX_DELAY);
-  } else if (strcmp(command, CHENILLARD_INT_OFF_3) == 0) {
-    stop_chenillard();
-    HAL_UART_Transmit(&huart3, msg_chenillard_int_off, strlen((char*)msg_chenillard_int_off), HAL_MAX_DELAY);
   } else {
     HAL_UART_Transmit(&huart3, msg2, strlen((char*)msg2), HAL_MAX_DELAY);
   }
 }
 
-volatile uint8_t chenillard1_step = 0;
-
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-  // This callback will not be used for the chenillard effect in this implementation.
-}
 /* USER CODE END 4 */
 
 /* MPU Configuration */
