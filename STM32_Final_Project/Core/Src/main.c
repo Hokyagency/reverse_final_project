@@ -142,29 +142,29 @@ int main(void)
   MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   linear_buf_reset(&linear_buf);
-  HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY);
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   uint8_t rx_char;
+  HAL_UART_Receive_IT(&huart3, &rx_char, 1);
   while (1)
   {
     if (HAL_UART_GetState(&huart3) == HAL_UART_STATE_READY) {
-      if (HAL_UART_Receive(&huart3, &rx_char, 1, 0) == HAL_OK) {
+
         if (rx_char == '\r' || rx_char == '\n') {
           process_command((char*)linear_buf.buffer);
           linear_buf_reset(&linear_buf);
-          HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY);
         } else {
           if (linear_buf_insert_char(&linear_buf, rx_char) != 0) {
-            HAL_UART_Transmit(&huart3, (uint8_t*)"Buffer overflow!\r\n", strlen("Buffer overflow!\r\n"), HAL_MAX_DELAY);
             linear_buf_reset(&linear_buf);
-            HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY);
           }
         }
-      }
+
+      HAL_UART_Receive_IT(&huart3, &rx_char, 1);
     }
+
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
@@ -246,14 +246,12 @@ void stop_chenillard(void) {
   tim2_active = 0;
   tim3_active = 0;
   HAL_GPIO_WritePin(GPIOB, led1_Pin | led2_Pin | led3_Pin, GPIO_PIN_RESET);
-  HAL_UART_Transmit(&huart3, msg_chenillard_off, strlen((char*)msg_chenillard_off), HAL_MAX_DELAY);
 }
 
 void start_chenillard(uint8_t chenillard_id) {
   stop_chenillard();
   current_chenillard = chenillard_id;
   chenillard_running = 1;
-  HAL_UART_Transmit(&huart3, msg_chenillard_on, strlen((char*)msg_chenillard_on), HAL_MAX_DELAY);
 }
 
 void start_timer(TIM_HandleTypeDef *htim, uint32_t period) {
@@ -269,15 +267,11 @@ void set_chenillard_speed(uint8_t chenillard_id, uint8_t frequency) {
   uint32_t period = 0;
   if (frequency == 1) {
     period = 500;
-    HAL_UART_Transmit(&huart3, msg_freq_set_base, strlen((char*)msg_freq_set_base), HAL_MAX_DELAY);
   } else if (frequency == 2) {
     period = 1000;
-    HAL_UART_Transmit(&huart3, msg_freq_set_slower, strlen((char*)msg_freq_set_slower), HAL_MAX_DELAY);
   } else if (frequency == 3) {
     period = 3000;
-    HAL_UART_Transmit(&huart3, msg_freq_set_faster, strlen((char*)msg_freq_set_faster), HAL_MAX_DELAY);
   } else {
-    HAL_UART_Transmit(&huart3, msg_freq_invalid, strlen((char*)msg_freq_invalid), HAL_MAX_DELAY);
     return;
   }
 
@@ -360,27 +354,21 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 void process_command(char *command) {
   if (strncmp(command, LED_ON_1, strlen(LED_ON_1)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_SET);
-    HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
     return;
   } else if (strncmp(command, LED_OFF_1, strlen(LED_OFF_1)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_RESET);
-    HAL_UART_Transmit(&huart3, msg_led_off, strlen((char*)msg_led_off), HAL_MAX_DELAY);
     return;
   } else if (strncmp(command, LED_ON_2, strlen(LED_ON_2)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_SET);
-    HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
     return;
   } else if (strncmp(command, LED_OFF_2, strlen(LED_OFF_2)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_RESET);
-    HAL_UART_Transmit(&huart3, msg_led_off, strlen((char*)msg_led_off), HAL_MAX_DELAY);
     return;
   } else if (strncmp(command, LED_ON_3, strlen(LED_ON_3)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_SET);
-    HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
     return;
   } else if (strncmp(command, LED_OFF_3, strlen(LED_OFF_3)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_RESET);
-    HAL_UART_Transmit(&huart3, msg_led_off, strlen((char*)msg_led_off), HAL_MAX_DELAY);
     return;
   }
 
@@ -415,24 +403,19 @@ void process_command(char *command) {
       if (frequency >= 1 && frequency <= 3) {
         if (chenillard_running) {
           set_chenillard_speed(current_chenillard, frequency);
-        } else {
-          HAL_UART_Transmit(&huart3, msg_chenillard_running_err, strlen((char*)msg_chenillard_running_err), HAL_MAX_DELAY);
         }
+        return;
       } else {
-        HAL_UART_Transmit(&huart3, msg_freq_invalid, strlen((char*)msg_freq_invalid), HAL_MAX_DELAY);
+        return;
       }
     } else {
-      HAL_UART_Transmit(&huart3, msg_freq_syntax_err, strlen((char*)msg_freq_syntax_err), HAL_MAX_DELAY);
+      return;
     }
-    return;
   }
-
   else {
-    HAL_UART_Transmit(&huart3, msg2, strlen((char*)msg2), HAL_MAX_DELAY);
     return;
   }
 }
-
 /* USER CODE END 4 */
 
 /* MPU Configuration */
