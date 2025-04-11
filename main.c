@@ -120,7 +120,6 @@ int main(int argc, char **argv) {
                 }
             }
         }else if (ret == 0) {
-            printf("Timeout waiting for data...\n\r");
             len = 0; // Reset length for next read
         }
 
