@@ -142,19 +142,12 @@ int main(int argc, char **argv) {
             		char state[4];
             		if (sscanf(commande, "LED%d %3s", &led_number, state) == 2) {
                 		if (led_number >= 1 && led_number <= 3 &&
-<<<<<<< HEAD
                     			(strcmp(state, "ON") == 0 || strcmp(state, "OFF") == 0)) {
                     			printf("Commande LED reconnue : LED %d %s (envoi au microcontrôleur)\n", led_number, state);
 					if(write_serial_port(fds.fd, commande, strlen(commande)) !=-1) {
 						printf("Commande LED envoyée.\n");
-=======
-                    		(strcmp(state, "ON") == 0 || strcmp(state, "OFF") == 0)) {
-                    		printf("Commande LED reconnue : LED %d %s (envoi au microcontrôleur)\n", led_number, state);
-							if(write_serial_port(fds.fd, commande, strlen(commande)) !=-1) {
-								printf("Commande LED envoyée.\n");
->>>>>>> d83c77fbd4023e411f6643525ff3cc96b4b42aa5
 					}
-					commande_reconnaissance = true;
+				commande_reconnaissance = true;
 				}
 				else {
                 			printf("Erreur : Format de commande LED incorrect (LED<1-3> ON/OFF).\n");
@@ -171,18 +164,11 @@ int main(int argc, char **argv) {
 				if (chenillard_number >= 1 && chenillard_number <= 3 &&
 					(strcmp(state, "ON") == 0 || strcmp(state, "OFF") == 0)) {
 					printf("Commande Chenillard reconnue : CHENILLARD %d %s (envoi au microcontrôleur)\n", chenillard_number, state);
-<<<<<<< HEAD
                                         if(write_serial_port(fds.fd, commande, strlen(commande)) !=-1) {
                                                 printf("Commande CHENILLARD envoyée.\n");
                                         }
-
-=======
-                        if(write_serial_port(fds.fd, commande, strlen(commande)) !=-1) {
-                            printf("Commande CHENILLARD envoyée.\n");
-                        }
->>>>>>> d83c77fbd4023e411f6643525ff3cc96b4b42aa5
 					commande_reconnaissance = true;
-                }
+		                }
 				else {
 					printf("Erreur : Format de commande Chenillard incorrect (CHENILLARD<1-3> ON/OFF).\n");
 				}
@@ -194,18 +180,11 @@ int main(int argc, char **argv) {
 			if (sscanf(commande, "CHENILLARD FREQUENCE%d", &frequency_number) == 1) {
 				if (frequency_number >= 1 && frequency_number <= 3) {
 					printf("Commande Fréquence Chenillard reconnue : CHENILLARD FREQUENCE %d (envoi au microcontrôleur)\n", frequency_number);
-<<<<<<< HEAD
                                         if(write_serial_port(fds.fd, commande, strlen(commande)) !=-1) {
                                                 printf("Commande FREQUENCE envoyée.\n");
                                         }
-
-=======
-					if(write_serial_port(fds.fd, commande, strlen(commande)) !=-1) {
-                            printf("Commande CHENILLARD envoyée.\n");
-                        }
->>>>>>> d83c77fbd4023e411f6643525ff3cc96b4b42aa5
-					commande_reconnaissance = true;
-				}
+				commande_reconnaissance = true;
+                                }
 				else {
 					printf("Erreur : Numéro de fréquence Chenillard incorrect (1, 2 ou 3).\n");
 				}
