@@ -16,12 +16,12 @@
   ******************************************************************************
   */
 /* USER CODE END Header */
-
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "usart.h"
-#include "gpio.h"
 #include "tim.h"
+#include "usart.h"
+#include "usb_device.h"
+#include "gpio.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -31,13 +31,18 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-uint8_t msg[] = "ENTREZ une commande (LED<n> ON/OFF, CHENILLARD<n> ON/OFF) : \r\n";
+uint8_t msg[] = "ENTREZ une commande (LED<n> ON/OFF, CHENILLARD<n> ON/OFF/FREQUENCE<n>) : \r\n";
 uint8_t msg2[] = "Erreur ! Commande inconnue.\r\n";
 uint8_t msg_chenillard_on[] = "Chenillard demarre.\r\n";
 uint8_t msg_chenillard_off[] = "Chenillard arrete.\r\n";
 uint8_t msg_led_on[] = "LED allumee.\r\n";
 uint8_t msg_led_off[] = "LED eteinte.\r\n";
 uint8_t msg_chenillard_running_err[] = "Erreur ! Arretez le chenillard en cours avant de controler les LEDs.\r\n";
+uint8_t msg_freq_set_base[] = "Frequence chenillard reglee sur la vitesse de base.\r\n";
+uint8_t msg_freq_set_slower[] = "Frequence chenillard reglee sur une vitesse plus lente.\r\n";
+uint8_t msg_freq_set_faster[] = "Frequence chenillard reglee sur une vitesse plus rapide.\r\n";
+uint8_t msg_freq_invalid[] = "Erreur ! Frequence chenillard inconnue (1, 2 ou 3).\r\n";
+uint8_t msg_freq_syntax_err[] = "Erreur ! Syntaxe de la commande de frequence : CHENILLARD FREQUENCE<n>.\r\n";
 
 /* USER CODE END PTD */
 
@@ -55,6 +60,7 @@ const char* CHENILLARD_ON_2 = "CHENILLARD2 ON";
 const char* CHENILLARD_OFF_2 = "CHENILLARD2 OFF";
 const char* CHENILLARD_ON_3 = "CHENILLARD3 ON";
 const char* CHENILLARD_OFF_3 = "CHENILLARD3 OFF";
+const char* CHENILLARD_FREQ = "CHENILLARD FREQUENCE";
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -62,8 +68,9 @@ const char* CHENILLARD_OFF_3 = "CHENILLARD3 OFF";
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+
 /* USER CODE BEGIN PV */
-#define MAX_BUFFER_SIZE 20
+#define MAX_BUFFER_SIZE 40
 struct linear_buf_t {
   uint8_t current_index;
   uint8_t buffer[MAX_BUFFER_SIZE];
@@ -71,6 +78,12 @@ struct linear_buf_t {
 struct linear_buf_t linear_buf;
 volatile uint8_t chenillard_running = 0;
 volatile uint8_t current_chenillard = 0;
+volatile uint32_t chenillard1_speed = 0; // Période pour le chenillard 1
+volatile uint32_t chenillard2_speed = 0; // Période pour le chenillard 2
+volatile uint32_t chenillard3_speed = 0; // Période pour le chenillard 3
+volatile uint8_t tim1_active = 0;
+volatile uint8_t tim2_active = 0;
+volatile uint8_t tim3_active = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -81,9 +94,13 @@ void linear_buf_reset(struct linear_buf_t *lb);
 int linear_buf_insert_char(struct linear_buf_t *lb, uint8_t c);
 void process_command(char *command);
 void stop_chenillard(void);
-void chenillard1_next_step(void);
-void chenillard2_next_step(void);
-void chenillard3_next_step(void);
+void chenillard1(TIM_HandleTypeDef *htim);
+void chenillard2(TIM_HandleTypeDef *htim);
+void chenillard3(TIM_HandleTypeDef *htim);
+void start_chenillard(uint8_t chenillard_id);
+void set_chenillard_speed(uint8_t chenillard_id, uint8_t frequency);
+void start_timer(TIM_HandleTypeDef *htim, uint32_t period);
+void stop_timer(TIM_HandleTypeDef *htim);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -118,15 +135,13 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_USART3_UART_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
-  MX_USART3_UART_Init();
+  MX_USB_DEVICE_Init();
   /* USER CODE BEGIN 2 */
   linear_buf_reset(&linear_buf);
-  HAL_TIM_Base_Start_IT(&htim1);
-  HAL_TIM_Base_Start_IT(&htim2);
-  HAL_TIM_Base_Start_IT(&htim3);
   HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY);
   /* USER CODE END 2 */
 
@@ -140,48 +155,24 @@ int main(void)
         if (rx_char == '\r' || rx_char == '\n') {
           process_command((char*)linear_buf.buffer);
           linear_buf_reset(&linear_buf);
-          HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY); // Réafficher l'invite
+          HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY);
         } else {
           if (linear_buf_insert_char(&linear_buf, rx_char) != 0) {
             HAL_UART_Transmit(&huart3, (uint8_t*)"Buffer overflow!\r\n", strlen("Buffer overflow!\r\n"), HAL_MAX_DELAY);
             linear_buf_reset(&linear_buf);
-            HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY); // Réafficher l'invite
+            HAL_UART_Transmit(&huart3, msg, strlen((char*)msg), HAL_MAX_DELAY);
           }
         }
       }
     }
-
-    // Exécution automatique des chenillards (sans interruption timer)
-    if (chenillard_running) {
-      if (current_chenillard == 1) {
-        static uint32_t last_tick1 = 0;
-        if (HAL_GetTick() - last_tick1 >= 200) { // Délai pour le chenillard 1
-          chenillard1_next_step();
-          last_tick1 = HAL_GetTick();
-        }
-      } else if (current_chenillard == 2) {
-        static uint32_t last_tick2 = 0;
-        if (HAL_GetTick() - last_tick2 >= 300) { // Délai pour le chenillard 2
-          chenillard2_next_step();
-          last_tick2 = HAL_GetTick();
-        }
-      } else if (current_chenillard == 3) {
-        static uint32_t last_tick3 = 0;
-        if (HAL_GetTick() - last_tick3 >= 500) { // Délai pour le chenillard 3
-          chenillard3_next_step();
-          last_tick3 = HAL_GetTick();
-        }
-      }
-    }
     /* USER CODE END WHILE */
-
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
 
 /**
-  * @brief  System Clock Configuration
+  * @brief System Clock Configuration
   * @retval None
   */
 void SystemClock_Config(void)
@@ -200,7 +191,12 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+  RCC_OscInitStruct.PLL.PLLM = 16;
+  RCC_OscInitStruct.PLL.PLLN = 192;
+  RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+  RCC_OscInitStruct.PLL.PLLQ = 3;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -208,10 +204,10 @@ void SystemClock_Config(void)
 
   /** Initializes the CPU, AHB and APB buses clocks
   */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK |
-                              RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
@@ -222,6 +218,10 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+volatile uint8_t chenillard1_step = 0;
+volatile GPIO_PinState chenillard2_state = GPIO_PIN_SET;
+volatile GPIO_PinState chenillard3_state = GPIO_PIN_SET;
+
 void linear_buf_reset(struct linear_buf_t *lb) {
   lb->current_index = 0;
   memset(lb->buffer, 0, sizeof(lb->buffer));
@@ -239,98 +239,200 @@ int linear_buf_insert_char(struct linear_buf_t *lb, uint8_t c) {
 void stop_chenillard(void) {
   chenillard_running = 0;
   current_chenillard = 0;
+  stop_timer(&htim1);
+  stop_timer(&htim2);
+  stop_timer(&htim3);
+  tim1_active = 0;
+  tim2_active = 0;
+  tim3_active = 0;
   HAL_GPIO_WritePin(GPIOB, led1_Pin | led2_Pin | led3_Pin, GPIO_PIN_RESET);
   HAL_UART_Transmit(&huart3, msg_chenillard_off, strlen((char*)msg_chenillard_off), HAL_MAX_DELAY);
 }
 
-void chenillard1_next_step(void) {
-  static uint8_t step = 0;
-  switch (step) {
-    case 0:
-      HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(GPIOB, led2_Pin | led3_Pin, GPIO_PIN_RESET);
-      break;
-    case 1:
-      HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(GPIOB, led1_Pin | led3_Pin, GPIO_PIN_RESET);
-      break;
-    case 2:
-      HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(GPIOB, led1_Pin | led2_Pin, GPIO_PIN_RESET);
-      break;
-    case 3:
-      HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_SET);
-      HAL_GPIO_WritePin(GPIOB, led1_Pin | led3_Pin, GPIO_PIN_RESET);
-      break;
-    default:
-      step = 0;
-      break;
+void start_chenillard(uint8_t chenillard_id) {
+  stop_chenillard();
+  current_chenillard = chenillard_id;
+  chenillard_running = 1;
+  HAL_UART_Transmit(&huart3, msg_chenillard_on, strlen((char*)msg_chenillard_on), HAL_MAX_DELAY);
+}
+
+void start_timer(TIM_HandleTypeDef *htim, uint32_t period) {
+  __HAL_TIM_SET_AUTORELOAD(htim, period - 1);
+  HAL_TIM_Base_Start_IT(htim);
+}
+
+void stop_timer(TIM_HandleTypeDef *htim) {
+  HAL_TIM_Base_Stop_IT(htim);
+}
+
+void set_chenillard_speed(uint8_t chenillard_id, uint8_t frequency) {
+  uint32_t period = 0;
+  if (frequency == 1) {
+    period = 500; // Vitesse de base (ajuster)
+    HAL_UART_Transmit(&huart3, msg_freq_set_base, strlen((char*)msg_freq_set_base), HAL_MAX_DELAY);
+  } else if (frequency == 2) {
+    period = 1000; // Vitesse plus lente (ajuster)
+    HAL_UART_Transmit(&huart3, msg_freq_set_slower, strlen((char*)msg_freq_set_slower), HAL_MAX_DELAY);
+  } else if (frequency == 3) {
+    period = 3000; // Vitesse plus rapide (ajuster)
+    HAL_UART_Transmit(&huart3, msg_freq_set_faster, strlen((char*)msg_freq_set_faster), HAL_MAX_DELAY);
+  } else {
+    HAL_UART_Transmit(&huart3, msg_freq_invalid, strlen((char*)msg_freq_invalid), HAL_MAX_DELAY);
+    return;
   }
-  step = (step + 1) % 4;
+
+  if (chenillard_id == 1) {
+    chenillard1_speed = period;
+    if (chenillard_running && current_chenillard == 1) {
+      start_timer(&htim1, chenillard1_speed);
+      tim1_active = 1;
+    }
+  } else if (chenillard_id == 2) {
+    chenillard2_speed = period;
+    if (chenillard_running && current_chenillard == 2) {
+      start_timer(&htim2, chenillard2_speed);
+      tim2_active = 1;
+    }
+  } else if (chenillard_id == 3) {
+    chenillard3_speed = period;
+    if (chenillard_running && current_chenillard == 3) {
+      start_timer(&htim3, chenillard3_speed);
+      tim3_active = 1;
+    }
+  }
 }
 
-void chenillard2_next_step(void) {
-  static uint8_t state = 0;
-  HAL_GPIO_WritePin(GPIOB, led1_Pin | led3_Pin, (state == 0) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(GPIOB, led2_Pin, (state == 1) ? GPIO_PIN_SET : GPIO_PIN_RESET);
-  state = 1 - state;
+void chenillard1(TIM_HandleTypeDef *htim) {
+  if (htim->Instance == TIM1) {
+    switch (chenillard1_step) {
+      case 0:
+        HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOB, led2_Pin | led3_Pin, GPIO_PIN_RESET);
+        break;
+      case 1:
+        HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOB, led1_Pin | led3_Pin, GPIO_PIN_RESET);
+        break;
+      case 2:
+        HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOB, led1_Pin | led2_Pin, GPIO_PIN_RESET);
+        break;
+      case 3:
+        HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOB, led1_Pin | led3_Pin, GPIO_PIN_RESET);
+        break;
+      case 4:
+        HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOB, led2_Pin | led3_Pin, GPIO_PIN_RESET);
+        break;
+    }
+    chenillard1_step = ((chenillard1_step + 1) % 5);
+  }
 }
 
-void chenillard3_next_step(void) {
-  HAL_GPIO_TogglePin(GPIOB, led1_Pin);
-  HAL_GPIO_TogglePin(GPIOB, led2_Pin);
-  HAL_GPIO_TogglePin(GPIOB, led3_Pin);
+void chenillard2(TIM_HandleTypeDef *htim) {
+  if (htim->Instance == TIM2) {
+    HAL_GPIO_WritePin(GPIOB, led1_Pin | led3_Pin, chenillard2_state);
+    HAL_GPIO_WritePin(GPIOB, led2_Pin, !chenillard2_state);
+    chenillard2_state = !chenillard2_state;
+  }
+}
+
+void chenillard3(TIM_HandleTypeDef *htim) {
+  if (htim->Instance == TIM3) {
+    HAL_GPIO_WritePin(GPIOB, led1_Pin | led2_Pin | led3_Pin, chenillard3_state);
+    chenillard3_state = !chenillard3_state;
+  }
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+  if (chenillard_running) {
+    if (htim->Instance == TIM1 && current_chenillard == 1 && tim1_active) {
+      chenillard1(htim);
+    } else if (htim->Instance == TIM2 && current_chenillard == 2 && tim2_active) {
+      chenillard2(htim);
+    } else if (htim->Instance == TIM3 && current_chenillard == 3 && tim3_active) {
+      chenillard3(htim);
+    }
+  }
 }
 
 void process_command(char *command) {
-  if (chenillard_running) {
-    if (strncmp(command, "LED", 3) == 0) {
-      HAL_UART_Transmit(&huart3, msg_chenillard_running_err, strlen((char*)msg_chenillard_running_err), HAL_MAX_DELAY);
-      return;
-    }
-  }
-
-  if (strcmp(command, LED_ON_1) == 0) {
+  // 1. Handle LED ON/OFF commands (assumed to be working)
+  if (strncmp(command, LED_ON_1, strlen(LED_ON_1)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_SET);
     HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
-  } else if (strcmp(command, LED_OFF_1) == 0) {
+    return;
+  } else if (strncmp(command, LED_OFF_1, strlen(LED_OFF_1)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_RESET);
     HAL_UART_Transmit(&huart3, msg_led_off, strlen((char*)msg_led_off), HAL_MAX_DELAY);
-  } else if (strcmp(command, LED_ON_2) == 0) {
+    return;
+  } else if (strncmp(command, LED_ON_2, strlen(LED_ON_2)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_SET);
     HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
-  } else if (strcmp(command, LED_OFF_2) == 0) {
+    return;
+  } else if (strncmp(command, LED_OFF_2, strlen(LED_OFF_2)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_RESET);
     HAL_UART_Transmit(&huart3, msg_led_off, strlen((char*)msg_led_off), HAL_MAX_DELAY);
-  } else if (strcmp(command, LED_ON_3) == 0) {
+    return;
+  } else if (strncmp(command, LED_ON_3, strlen(LED_ON_3)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_SET);
     HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
-  } else if (strcmp(command, LED_OFF_3) == 0) {
+    return;
+  } else if (strncmp(command, LED_OFF_3, strlen(LED_OFF_3)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_RESET);
     HAL_UART_Transmit(&huart3, msg_led_off, strlen((char*)msg_led_off), HAL_MAX_DELAY);
-  } else if (strcmp(command, CHENILLARD_ON_1) == 0) {
-    stop_chenillard(); // S'assurer qu'aucun chenillard n'est en cours
-    chenillard_running = 1;
-    current_chenillard = 1;
-    HAL_UART_Transmit(&huart3, msg_chenillard_on, strlen((char*)msg_chenillard_on), HAL_MAX_DELAY);
-  } else if (strcmp(command, CHENILLARD_OFF_1) == 0) {
+    return;
+  }
+
+  // 2. Handle CHENILLARD ON/OFF commands
+  else if (strncmp(command, CHENILLARD_ON_1, strlen(CHENILLARD_ON_1)) == 0) {
+    start_chenillard(1);
+    set_chenillard_speed(1, 1); // Démarrer à la vitesse de base
+    return;
+  } else if (strncmp(command, CHENILLARD_OFF_1, strlen(CHENILLARD_OFF_1)) == 0) {
     stop_chenillard();
-  } else if (strcmp(command, CHENILLARD_ON_2) == 0) {
-    stop_chenillard(); // S'assurer qu'aucun chenillard n'est en cours
-    chenillard_running = 1;
-    current_chenillard = 2;
-    HAL_UART_Transmit(&huart3, msg_chenillard_on, strlen((char*)msg_chenillard_on), HAL_MAX_DELAY);
-  } else if (strcmp(command, CHENILLARD_OFF_2) == 0) {
+    return;
+  } else if (strncmp(command, CHENILLARD_ON_2, strlen(CHENILLARD_ON_2)) == 0) {
+    start_chenillard(2);
+    set_chenillard_speed(2, 1); // Démarrer à la vitesse de base
+    return;
+  } else if (strncmp(command, CHENILLARD_OFF_2, strlen(CHENILLARD_OFF_2)) == 0) {
     stop_chenillard();
-  } else if (strcmp(command, CHENILLARD_ON_3) == 0) {
-    stop_chenillard(); // S'assurer qu'aucun chenillard n'est en cours
-    chenillard_running = 1;
-    current_chenillard = 3;
-    HAL_UART_Transmit(&huart3, msg_chenillard_on, strlen((char*)msg_chenillard_on), HAL_MAX_DELAY);
-  } else if (strcmp(command, CHENILLARD_OFF_3) == 0) {
+    return;
+  } else if (strncmp(command, CHENILLARD_ON_3, strlen(CHENILLARD_ON_3)) == 0) {
+    start_chenillard(3);
+    set_chenillard_speed(3, 1); // Démarrer à la vitesse de base
+    return;
+  } else if (strncmp(command, CHENILLARD_OFF_3, strlen(CHENILLARD_OFF_3)) == 0) {
     stop_chenillard();
-  } else {
+    return;
+  }
+
+  else if (strncmp(command, CHENILLARD_FREQ, strlen(CHENILLARD_FREQ)) == 0) {
+    if (strlen(command) > strlen(CHENILLARD_FREQ)) {
+      uint8_t freq_char = command[strlen(CHENILLARD_FREQ)];
+      uint8_t frequency = freq_char - '0'; // Convert char to integer
+
+      if (frequency >= 1 && frequency <= 3) {
+        if (chenillard_running) {
+          set_chenillard_speed(current_chenillard, frequency);
+        } else {
+          HAL_UART_Transmit(&huart3, msg_chenillard_running_err, strlen((char*)msg_chenillard_running_err), HAL_MAX_DELAY);
+        }
+      } else {
+        HAL_UART_Transmit(&huart3, msg_freq_invalid, strlen((char*)msg_freq_invalid), HAL_MAX_DELAY);
+      }
+    } else {
+      HAL_UART_Transmit(&huart3, msg_freq_syntax_err, strlen((char*)msg_freq_syntax_err), HAL_MAX_DELAY);
+    }
+    return;
+  }
+
+  // 4. Handle invalid commands
+  else {
     HAL_UART_Transmit(&huart3, msg2, strlen((char*)msg2), HAL_MAX_DELAY);
+    return;
   }
 }
 
@@ -338,8 +440,7 @@ void process_command(char *command) {
 
 /* MPU Configuration */
 
-void MPU_Config(void)
-{
+void MPU_Config(void) {
   MPU_Region_InitTypeDef MPU_InitStruct = {0};
 
   /* Disables the MPU */
@@ -368,13 +469,11 @@ void MPU_Config(void)
   * @brief  This function is executed in case of error occurrence.
   * @retval None
   */
-void Error_Handler(void)
-{
+void Error_Handler(void) {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-  while (1)
-  {
+  while (1) {
   }
   /* USER CODE END Error_Handler_Debug */
 }
@@ -387,8 +486,7 @@ void Error_Handler(void)
   * @param  line: assert_param error line source number
   * @retval None
   */
-void assert_failed(uint8_t *file, uint32_t line)
-{
+void assert_failed(uint8_t *file, uint32_t line) {
   /* USER CODE BEGIN 6 */
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
