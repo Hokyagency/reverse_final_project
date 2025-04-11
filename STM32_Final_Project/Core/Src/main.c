@@ -136,23 +136,32 @@ int main(void)
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   uint8_t rx_char;
+  HAL_UART_Receive_IT(&huart3, &rx_char, 1);
   while (1)
   {
     if (HAL_UART_GetState(&huart3) == HAL_UART_STATE_READY) {
-      if (HAL_UART_Receive(&huart3, &rx_char, 1, 0) == HAL_OK) {
+
         if (rx_char == '\r' || rx_char == '\n') {
           process_command((char*)linear_buf.buffer);
           linear_buf_reset(&linear_buf);
+<<<<<<< HEAD
         
         } else {
           if (linear_buf_insert_char(&linear_buf, rx_char) != 0) {
 
             linear_buf_reset(&linear_buf);
 
+=======
+        } else {
+          if (linear_buf_insert_char(&linear_buf, rx_char) != 0) {
+            linear_buf_reset(&linear_buf);
+>>>>>>> b70239478df0a673e35625598af3356a225b9d71
           }
         }
-      }
+
+      HAL_UART_Receive_IT(&huart3, &rx_char, 1);
     }
+
     /* USER CODE END WHILE */
     /* USER CODE BEGIN 3 */
   }
@@ -234,14 +243,20 @@ void stop_chenillard(void) {
   tim2_active = 0;
   tim3_active = 0;
   HAL_GPIO_WritePin(GPIOB, led1_Pin | led2_Pin | led3_Pin, GPIO_PIN_RESET);
+<<<<<<< HEAD
   
+=======
+>>>>>>> b70239478df0a673e35625598af3356a225b9d71
 }
 
 void start_chenillard(uint8_t chenillard_id) {
   stop_chenillard();
   current_chenillard = chenillard_id;
   chenillard_running = 1;
+<<<<<<< HEAD
   
+=======
+>>>>>>> b70239478df0a673e35625598af3356a225b9d71
 }
 
 void start_timer(TIM_HandleTypeDef *htim, uint32_t period) {
@@ -257,6 +272,7 @@ void set_chenillard_speed(uint8_t chenillard_id, uint8_t frequency) {
   uint32_t period = 0;
   if (frequency == 1) {
     period = 500;
+<<<<<<< HEAD
     
   } else if (frequency == 2) {
     period = 1000;
@@ -266,6 +282,13 @@ void set_chenillard_speed(uint8_t chenillard_id, uint8_t frequency) {
     
   } else {
     
+=======
+  } else if (frequency == 2) {
+    period = 1000;
+  } else if (frequency == 3) {
+    period = 3000;
+  } else {
+>>>>>>> b70239478df0a673e35625598af3356a225b9d71
     return;
   }
 
@@ -348,6 +371,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 void process_command(char *command) {
   if (strncmp(command, LED_ON_1, strlen(LED_ON_1)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_SET);
+<<<<<<< HEAD
     
     return;
   } else if (strncmp(command, LED_OFF_1, strlen(LED_OFF_1)) == 0) {
@@ -369,6 +393,23 @@ void process_command(char *command) {
   } else if (strncmp(command, LED_OFF_3, strlen(LED_OFF_3)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_RESET);
  
+=======
+    return;
+  } else if (strncmp(command, LED_OFF_1, strlen(LED_OFF_1)) == 0) {
+    HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_RESET);
+    return;
+  } else if (strncmp(command, LED_ON_2, strlen(LED_ON_2)) == 0) {
+    HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_SET);
+    return;
+  } else if (strncmp(command, LED_OFF_2, strlen(LED_OFF_2)) == 0) {
+    HAL_GPIO_WritePin(GPIOB, led2_Pin, GPIO_PIN_RESET);
+    return;
+  } else if (strncmp(command, LED_ON_3, strlen(LED_ON_3)) == 0) {
+    HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_SET);
+    return;
+  } else if (strncmp(command, LED_OFF_3, strlen(LED_OFF_3)) == 0) {
+    HAL_GPIO_WritePin(GPIOB, led3_Pin, GPIO_PIN_RESET);
+>>>>>>> b70239478df0a673e35625598af3356a225b9d71
     return;
   }
 
@@ -403,14 +444,26 @@ void process_command(char *command) {
       if (frequency >= 1 && frequency <= 3) {
         if (chenillard_running) {
           set_chenillard_speed(current_chenillard, frequency);
+<<<<<<< HEAD
         } 
       } 
     } 
     
+=======
+        }
+        return;
+      } else {
+        return;
+      }
+    } else {
+      return;
+    }
+  }
+  else {
+>>>>>>> b70239478df0a673e35625598af3356a225b9d71
     return;
   }
 }
-
 /* USER CODE END 4 */
 
 /* MPU Configuration */
