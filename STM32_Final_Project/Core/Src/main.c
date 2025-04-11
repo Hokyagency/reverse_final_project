@@ -78,9 +78,9 @@ struct linear_buf_t {
 struct linear_buf_t linear_buf;
 volatile uint8_t chenillard_running = 0;
 volatile uint8_t current_chenillard = 0;
-volatile uint32_t chenillard1_speed = 0; // Période pour le chenillard 1
-volatile uint32_t chenillard2_speed = 0; // Période pour le chenillard 2
-volatile uint32_t chenillard3_speed = 0; // Période pour le chenillard 3
+volatile uint32_t chenillard1_speed = 0;
+volatile uint32_t chenillard2_speed = 0;
+volatile uint32_t chenillard3_speed = 0;
 volatile uint8_t tim1_active = 0;
 volatile uint8_t tim2_active = 0;
 volatile uint8_t tim3_active = 0;
@@ -268,13 +268,13 @@ void stop_timer(TIM_HandleTypeDef *htim) {
 void set_chenillard_speed(uint8_t chenillard_id, uint8_t frequency) {
   uint32_t period = 0;
   if (frequency == 1) {
-    period = 500; // Vitesse de base (ajuster)
+    period = 500;
     HAL_UART_Transmit(&huart3, msg_freq_set_base, strlen((char*)msg_freq_set_base), HAL_MAX_DELAY);
   } else if (frequency == 2) {
-    period = 1000; // Vitesse plus lente (ajuster)
+    period = 1000;
     HAL_UART_Transmit(&huart3, msg_freq_set_slower, strlen((char*)msg_freq_set_slower), HAL_MAX_DELAY);
   } else if (frequency == 3) {
-    period = 3000; // Vitesse plus rapide (ajuster)
+    period = 3000;
     HAL_UART_Transmit(&huart3, msg_freq_set_faster, strlen((char*)msg_freq_set_faster), HAL_MAX_DELAY);
   } else {
     HAL_UART_Transmit(&huart3, msg_freq_invalid, strlen((char*)msg_freq_invalid), HAL_MAX_DELAY);
@@ -358,7 +358,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 }
 
 void process_command(char *command) {
-  // 1. Handle LED ON/OFF commands (assumed to be working)
   if (strncmp(command, LED_ON_1, strlen(LED_ON_1)) == 0) {
     HAL_GPIO_WritePin(GPIOB, led1_Pin, GPIO_PIN_SET);
     HAL_UART_Transmit(&huart3, msg_led_on, strlen((char*)msg_led_on), HAL_MAX_DELAY);
@@ -385,24 +384,23 @@ void process_command(char *command) {
     return;
   }
 
-  // 2. Handle CHENILLARD ON/OFF commands
   else if (strncmp(command, CHENILLARD_ON_1, strlen(CHENILLARD_ON_1)) == 0) {
     start_chenillard(1);
-    set_chenillard_speed(1, 1); // Démarrer à la vitesse de base
+    set_chenillard_speed(1, 1);
     return;
   } else if (strncmp(command, CHENILLARD_OFF_1, strlen(CHENILLARD_OFF_1)) == 0) {
     stop_chenillard();
     return;
   } else if (strncmp(command, CHENILLARD_ON_2, strlen(CHENILLARD_ON_2)) == 0) {
     start_chenillard(2);
-    set_chenillard_speed(2, 1); // Démarrer à la vitesse de base
+    set_chenillard_speed(2, 1);
     return;
   } else if (strncmp(command, CHENILLARD_OFF_2, strlen(CHENILLARD_OFF_2)) == 0) {
     stop_chenillard();
     return;
   } else if (strncmp(command, CHENILLARD_ON_3, strlen(CHENILLARD_ON_3)) == 0) {
     start_chenillard(3);
-    set_chenillard_speed(3, 1); // Démarrer à la vitesse de base
+    set_chenillard_speed(3, 1);
     return;
   } else if (strncmp(command, CHENILLARD_OFF_3, strlen(CHENILLARD_OFF_3)) == 0) {
     stop_chenillard();
@@ -412,7 +410,7 @@ void process_command(char *command) {
   else if (strncmp(command, CHENILLARD_FREQ, strlen(CHENILLARD_FREQ)) == 0) {
     if (strlen(command) > strlen(CHENILLARD_FREQ)) {
       uint8_t freq_char = command[strlen(CHENILLARD_FREQ)];
-      uint8_t frequency = freq_char - '0'; // Convert char to integer
+      uint8_t frequency = freq_char - '0';
 
       if (frequency >= 1 && frequency <= 3) {
         if (chenillard_running) {
@@ -429,7 +427,6 @@ void process_command(char *command) {
     return;
   }
 
-  // 4. Handle invalid commands
   else {
     HAL_UART_Transmit(&huart3, msg2, strlen((char*)msg2), HAL_MAX_DELAY);
     return;
